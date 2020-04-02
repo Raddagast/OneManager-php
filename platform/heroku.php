@@ -2,6 +2,7 @@
 
 function getpath()
 {
+    $_SERVER['firstacceptlanguage'] = strtolower(splitfirst(splitfirst($_SERVER['HTTP_ACCEPT_LANGUAGE'],';')[0],',')[0]);
     $_SERVER['REMOTE_ADDR'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
     $_SERVER['base_path'] = path_format(substr($_SERVER['SCRIPT_NAME'], 0, -10) . '/');
     $p = strpos($_SERVER['REQUEST_URI'],'?');
@@ -41,13 +42,18 @@ function getConfig($str, $disktag = '')
 {
     global $InnerEnv;
     global $Base64Env;
-    if ($disktag=='') $disktag = $_SERVER['disktag'];
     if (in_array($str, $InnerEnv)) {
-        if (in_array($str, $Base64Env)) return equal_replace(json_decode(getenv($disktag), true)[$str],1);
-        else return json_decode(getenv($disktag), true)[$str];
+        if ($disktag=='') $disktag = $_SERVER['disktag'];
+        $env = json_decode(getenv($disktag), true);
+        if (isset($env[$str])) {
+            if (in_array($str, $Base64Env)) return equal_replace($env[$str],1);
+            else return $env[$str];
+	}
+    } else {
+	if (in_array($str, $Base64Env)) return equal_replace(getenv($str),1);
+        else return getenv($str);
     }
-    if (in_array($str, $Base64Env)) return equal_replace(getenv($str),1);
-    else return getenv($str);
+    return '';
 }
 
 function setConfig($arr, $disktag = '')
@@ -88,6 +94,7 @@ function setConfig($arr, $disktag = '')
         if ($disktag_s!='') $tmp['disktag'] = substr($disktag_s, 0, -1);
         else $tmp['disktag'] = '';
     }
+    foreach ($tmp as $key => $val) if ($val=='') $tmp[$key]=null;
 //    echo '正式设置：'.json_encode($tmp,JSON_PRETTY_PRINT).'
 //';
     return setHerokuConfig($tmp, getConfig('function_name'), getConfig('APIKey'));
@@ -213,9 +220,9 @@ function setHerokuConfig($env, $function_name, $apikey)
     return HerokuAPI('PATCH', 'https://api.heroku.com/apps/' . $function_name . '/config-vars', $data, $apikey);
 }
 
-function updateHerokuapp($function_name, $apikey)
+function updateHerokuapp($function_name, $apikey, $source)
 {
-    $tmp['source_blob']['url'] = 'https://github.com/qkqpttgf/OneManager-php/tarball/master/';
+    $tmp['source_blob']['url'] = $source;
     $data = json_encode($tmp);
     return HerokuAPI('POST', 'https://api.heroku.com/apps/' . $function_name . '/builds', $data, $apikey);
 }
@@ -233,9 +240,11 @@ function_name:' . $_SERVER['function_name'] . '<br>
 <button onclick="location.href = location.href;">'.getconstStr('Refresh').'</button>';
 }
 
-function OnekeyUpate()
+function OnekeyUpate($auth = 'qkqpttgf', $project = 'OneManager-php', $branch = 'master')
 {
-    return json_decode(updateHerokuapp(getConfig('function_name'), getConfig('APIKey'))['body'], true);
+    //'https://github.com/qkqpttgf/OneManager-php/tarball/master/';
+    $source = 'https://github.com/' . $auth . '/' . $project . '/tarball/' . $branch . '/';
+    return json_decode(updateHerokuapp(getConfig('function_name'), getConfig('APIKey'), $source)['body'], true);
 }
 
 function setConfigResponse($response)
